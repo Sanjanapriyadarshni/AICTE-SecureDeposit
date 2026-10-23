@@ -275,9 +275,10 @@ export default function ReleasesView({
           <button
             key={st}
             onClick={() => setStatusFilter(st)}
-            className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-              statusFilter === st ? 'bg-[#0b1f3a] text-white' : 'bg-white border text-slate-600 hover:bg-slate-50'
+            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
+              statusFilter === st ? 'bg-slate-900 text-white shadow-xs' : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50'
             }`}
+            style={statusFilter === st ? { backgroundColor: '#0b1f3a', color: '#ffffff' } : {}}
           >
             {st === 'ALL' ? 'All Applications' : st.replace(/_/g, ' ')}
           </button>

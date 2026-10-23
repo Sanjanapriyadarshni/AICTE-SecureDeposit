@@ -42,7 +42,10 @@ export default function DashboardView({
     <div className="space-y-6">
       
       {/* Role-Specific Header Banner */}
-      <div className="bg-gradient-to-r from-[#0b1f3a] via-[#12315b] to-[#0f2942] rounded-2xl p-6 text-white shadow-sm border border-slate-700">
+      <div 
+        className="bg-aicte-banner bg-slate-900 rounded-2xl p-6 text-white shadow-sm border border-slate-700"
+        style={{ background: 'linear-gradient(135deg, #0b1f3a 0%, #12315b 50%, #0f2942 100%)', color: '#ffffff' }}
+      >
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 mb-1">

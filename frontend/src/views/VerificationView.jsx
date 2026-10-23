@@ -246,7 +246,10 @@ export default function VerificationView({
       )}
 
       {/* Simulated Bank Verification Control Box */}
-      <div className="bg-gradient-to-r from-blue-900 to-indigo-950 p-5 rounded-xl text-white shadow-sm border border-blue-800">
+      <div 
+        className="bg-aicte-bank-gateway bg-slate-900 p-5 rounded-xl text-white shadow-sm border border-blue-800"
+        style={{ background: 'linear-gradient(135deg, #0f2942 0%, #1e3a8a 100%)', color: '#ffffff' }}
+      >
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">

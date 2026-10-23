@@ -180,11 +180,12 @@ export default function FDRListView({
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              className={`px-3 py-1.5 rounded-lg text-xs transition-colors ${
                 activeTab === tab.id
-                  ? 'bg-[#0b1f3a] text-white shadow-xs'
-                  : 'text-slate-600 hover:bg-slate-100'
+                  ? 'bg-slate-900 text-white shadow-xs font-semibold'
+                  : 'text-slate-700 hover:bg-slate-100 font-medium'
               }`}
+              style={activeTab === tab.id ? { backgroundColor: '#0b1f3a', color: '#ffffff' } : {}}
             >
               {tab.label}
             </button>

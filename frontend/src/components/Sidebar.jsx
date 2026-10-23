@@ -115,11 +115,12 @@ export default function Sidebar({
             <button
               key={item.id}
               onClick={() => setCurrentView(item.id)}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm transition-all ${
                 isActive
-                  ? 'bg-blue-50 text-blue-900 border border-blue-200 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                  ? 'bg-blue-50 text-blue-950 font-bold border border-blue-300 shadow-xs'
+                  : 'text-slate-700 font-medium hover:text-slate-900 hover:bg-slate-100'
               }`}
+              style={isActive ? { backgroundColor: '#eff6ff', color: '#172554' } : {}}
             >
               <div className="flex items-center gap-3">
                 <Icon className={`w-4 h-4 ${isActive ? 'text-blue-700' : 'text-slate-400'}`} />

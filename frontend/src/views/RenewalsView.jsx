@@ -220,25 +220,28 @@ export default function RenewalsView({
         <div className="flex items-center gap-2">
           <button
             onClick={() => setActiveTab('expiring')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              activeTab === 'expiring' ? 'bg-[#0b1f3a] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              activeTab === 'expiring' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-700 hover:bg-slate-100 font-medium'
             }`}
+            style={activeTab === 'expiring' ? { backgroundColor: '#0b1f3a', color: '#ffffff' } : {}}
           >
             Expiring & Matured Deposits ({expiringFDRs.length})
           </button>
           <button
             onClick={() => setActiveTab('requests')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              activeTab === 'requests' ? 'bg-[#0b1f3a] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              activeTab === 'requests' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-700 hover:bg-slate-100 font-medium'
             }`}
+            style={activeTab === 'requests' ? { backgroundColor: '#0b1f3a', color: '#ffffff' } : {}}
           >
             Renewal Applications Queue ({renewalRequests.length})
           </button>
           <button
             onClick={() => setActiveTab('notices')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              activeTab === 'notices' ? 'bg-[#0b1f3a] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              activeTab === 'notices' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-700 hover:bg-slate-100 font-medium'
             }`}
+            style={activeTab === 'notices' ? { backgroundColor: '#0b1f3a', color: '#ffffff' } : {}}
           >
             Dispatched Notices & Advisories ({reminders.length})
           </button>

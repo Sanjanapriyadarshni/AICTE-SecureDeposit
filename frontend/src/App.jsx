@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
+import LoginView from './views/LoginView';
 import DashboardView from './views/DashboardView';
 import RegisterFDRView from './views/RegisterFDRView';
 import FDRListView from './views/FDRListView';
@@ -8,13 +9,38 @@ import VerificationView from './views/VerificationView';
 import RenewalsView from './views/RenewalsView';
 import ReleasesView from './views/ReleasesView';
 import AuditView from './views/AuditView';
-import { fetchSummary, resetDemoData } from './services/api';
+import { 
+  fetchSummary, 
+  resetDemoData, 
+  getInitialSummary, 
+  getDataSourceStatus, 
+  subscribeDataSourceStatus,
+  setActiveRole,
+  getStoredAuth,
+  setStoredAuth,
+  logoutUser,
+  DEMO_CREDENTIALS
+} from './services/api';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
 
 export default function App() {
-  const [currentRole, setCurrentRole] = useState('AICTE_OFFICER'); // 'INSTITUTION', 'AICTE_OFFICER', 'APPROVER'
-  const [currentView, setCurrentView] = useState('dashboard');
-  const [summary, setSummary] = useState(null);
+  const getInitialParam = (param, defaultVal) => {
+    if (typeof window !== 'undefined') {
+      const url = new URLSearchParams(window.location.search);
+      return url.get(param) || defaultVal;
+    }
+    return defaultVal;
+  };
+
+  const [auth, setAuth] = useState(() => getStoredAuth());
+  const [currentRole, setCurrentRole] = useState(() => {
+    const stored = getStoredAuth();
+    if (stored?.user?.role) return stored.user.role;
+    return getInitialParam('role', 'AICTE_OFFICER');
+  });
+  const [currentView, setCurrentView] = useState(() => getInitialParam('view', 'dashboard'));
+  const [summary, setSummary] = useState(() => getInitialSummary());
+  const [dataSourceStatus, setDataSourceStatus] = useState(() => getDataSourceStatus());
   const [isResetting, setIsResetting] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
 
@@ -24,13 +50,32 @@ export default function App() {
   const [targetReleaseFdr, setTargetReleaseFdr] = useState(null);
 
   useEffect(() => {
+    setActiveRole(currentRole);
+  }, [currentRole]);
+
+  useEffect(() => {
     loadSummary();
+    const unsubscribe = subscribeDataSourceStatus(status => {
+      setDataSourceStatus(status);
+    });
+    return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('view') !== currentView || params.get('role') !== currentRole) {
+        params.set('view', currentView);
+        params.set('role', currentRole);
+        window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+      }
+    }
+  }, [currentView, currentRole]);
 
   async function loadSummary() {
     try {
       const data = await fetchSummary();
-      setSummary(data);
+      if (data) setSummary(data);
     } catch (err) {
       console.error('Failed to load dashboard summary:', err);
     }
@@ -41,6 +86,42 @@ export default function App() {
     setTimeout(() => {
       setToastMessage(null);
     }, 4500);
+  }
+
+  function handleLoginSuccess(token, user) {
+    setAuth({ token, user });
+    setCurrentRole(user.role);
+    setCurrentView('dashboard');
+    loadSummary();
+    showToast(`Welcome, ${user.name}! Signed in as ${user.role}.`);
+  }
+
+  async function handleLogout() {
+    await logoutUser();
+    setAuth({ token: null, user: null });
+    showToast('You have been signed out successfully.');
+  }
+
+  function handleRoleChange(newRole) {
+    const match = DEMO_CREDENTIALS.find(d => d.role === newRole);
+    if (match) {
+      const user = {
+        id: match.role === 'INSTITUTION' ? 1 : (match.role === 'AICTE_OFFICER' ? 2 : 3),
+        email: match.email,
+        name: match.name,
+        role: match.role,
+        institution_id: match.institution_id,
+        designation: match.designation
+      };
+      setStoredAuth(auth.token || `token_${newRole}`, user);
+      setAuth({ token: auth.token || `token_${newRole}`, user });
+      setCurrentRole(newRole);
+      setCurrentView('dashboard');
+      loadSummary();
+      showToast(`Switched active perspective to ${match.roleLabel} (${match.name})`);
+    } else {
+      setCurrentRole(newRole);
+    }
   }
 
   async function handleResetDemo() {
@@ -86,23 +167,33 @@ export default function App() {
     }
   }
 
+  // If not authenticated, render official Login page
+  if (!auth?.token || !auth?.user) {
+    return <LoginView onLoginSuccess={handleLoginSuccess} />;
+  }
+
+  const currentUser = auth.user;
+
   return (
-    <div className="min-h-screen bg-slate-100/70 flex flex-col font-sans">
+    <div className="min-h-screen bg-[#F3F6FA] flex flex-col font-sans">
       
       {/* Official Government Header */}
       <Header
         currentRole={currentRole}
-        setRole={setCurrentRole}
+        currentUser={currentUser}
+        setRole={handleRoleChange}
+        onLogout={handleLogout}
         onResetData={handleResetDemo}
         isResetting={isResetting}
-        institutionName="Delhi Institute of Technology & Management"
+        institutionName={currentUser?.institution_id === 1 ? "Delhi Institute of Technology & Management" : "Technical Institution"}
+        dataSourceStatus={dataSourceStatus}
       />
 
       {/* Global Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-5 right-5 z-50 animate-bounce">
           <div className={`p-4 rounded-xl shadow-xl flex items-center gap-3 text-xs font-semibold text-white ${
-            toastMessage.type === 'error' ? 'bg-red-600' : 'bg-slate-900 border border-slate-700'
+            toastMessage.type === 'error' ? 'bg-red-600' : 'bg-[#17365D] border border-slate-600'
           }`}>
             {toastMessage.type === 'error' ? (
               <AlertCircle className="w-5 h-5 text-red-300" />
@@ -118,7 +209,7 @@ export default function App() {
       {/* Main Body with Sidebar & Content */}
       <div className="flex-1 max-w-7xl w-full mx-auto flex flex-col md:flex-row">
         
-        {/* Navigation Sidebar */}
+        {/* Role-Specific Navigation Sidebar */}
         <Sidebar
           currentView={currentView}
           setCurrentView={setCurrentView}
@@ -158,6 +249,27 @@ export default function App() {
           {currentView === 'verification' && (
             <VerificationView
               currentRole={currentRole}
+              filterMode="ALL"
+              selectedFdrId={targetVerificationFdrId}
+              setSelectedFdrId={setTargetVerificationFdrId}
+              onVerificationComplete={loadSummary}
+            />
+          )}
+
+          {currentView === 'discrepancy_review' && (
+            <VerificationView
+              currentRole={currentRole}
+              filterMode="DISCREPANCIES"
+              selectedFdrId={targetVerificationFdrId}
+              setSelectedFdrId={setTargetVerificationFdrId}
+              onVerificationComplete={loadSummary}
+            />
+          )}
+
+          {currentView === 'correction_requests' && (
+            <VerificationView
+              currentRole={currentRole}
+              filterMode="CORRECTIONS"
               selectedFdrId={targetVerificationFdrId}
               setSelectedFdrId={setTargetVerificationFdrId}
               onVerificationComplete={loadSummary}
@@ -175,7 +287,24 @@ export default function App() {
           {currentView === 'releases' && (
             <ReleasesView
               currentRole={currentRole}
+              filterStatus="ALL"
               preSelectedFDR={targetReleaseFdr}
+              onRefreshSummary={loadSummary}
+            />
+          )}
+
+          {currentView === 'approved_decisions' && (
+            <ReleasesView
+              currentRole={currentRole}
+              filterStatus="APPROVED_BY_APPROVER"
+              onRefreshSummary={loadSummary}
+            />
+          )}
+
+          {currentView === 'returned_requests' && (
+            <ReleasesView
+              currentRole={currentRole}
+              filterStatus="RETURNED_FOR_CLARIFICATION"
               onRefreshSummary={loadSummary}
             />
           )}

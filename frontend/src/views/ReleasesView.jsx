@@ -29,13 +29,27 @@ import StatusBadge from '../components/StatusBadge';
 export default function ReleasesView({ 
   currentRole, 
   preSelectedFDR,
-  onRefreshSummary 
+  onRefreshSummary,
+  filterStatus = 'ALL'
 }) {
-  const [requests, setRequests] = useState([]);
+  const [requests, setRequests] = useState(() => {
+    try {
+      const cached = localStorage.getItem('aicte_releases');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
   const [eligibleFDRs, setEligibleFDRs] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [loading, setLoading] = useState(false);
+  const [statusFilter, setStatusFilter] = useState(filterStatus);
   const [notification, setNotification] = useState(null);
+
+  useEffect(() => {
+    if (filterStatus) {
+      setStatusFilter(filterStatus);
+    }
+  }, [filterStatus]);
 
   // Apply modal
   const [showApplyModal, setShowApplyModal] = useState(!!preSelectedFDR);
@@ -287,7 +301,7 @@ export default function ReleasesView({
 
       {/* Requests Table */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-        {loading ? (
+        {loading && requests.length === 0 ? (
           <div className="p-12 text-center text-slate-500">
             <RotateCw className="w-8 h-8 animate-spin mx-auto text-blue-600 mb-2" />
             <span>Loading release pipeline...</span>

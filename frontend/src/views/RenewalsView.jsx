@@ -29,10 +29,32 @@ export default function RenewalsView({
   preSelectedFDR, 
   onRefreshSummary 
 }) {
-  const [expiringFDRs, setExpiringFDRs] = useState([]);
-  const [renewalRequests, setRenewalRequests] = useState([]);
-  const [reminders, setReminders] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [expiringFDRs, setExpiringFDRs] = useState(() => {
+    try {
+      const cached = localStorage.getItem('aicte_fdrs');
+      const list = cached ? JSON.parse(cached) : [];
+      return list.filter(f => f.status === 'EXPIRING_SOON' || f.status === 'MATURED');
+    } catch {
+      return [];
+    }
+  });
+  const [renewalRequests, setRenewalRequests] = useState(() => {
+    try {
+      const cached = localStorage.getItem('aicte_renewals');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [reminders, setReminders] = useState(() => {
+    try {
+      const cached = localStorage.getItem('aicte_reminders');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [loading, setLoading] = useState(false);
   const [dayFilter, setDayFilter] = useState(90);
   const [activeTab, setActiveTab] = useState('expiring'); // 'expiring', 'requests', 'notices'
   const [notification, setNotification] = useState(null);
@@ -267,7 +289,7 @@ export default function RenewalsView({
       {/* TAB 1: Expiring & Matured Deposits */}
       {activeTab === 'expiring' && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-          {loading ? (
+          {loading && expiringFDRs.length === 0 ? (
             <div className="p-12 text-center text-slate-500">
               <RotateCw className="w-8 h-8 animate-spin mx-auto text-blue-600 mb-2" />
               <span>Checking maturity schedules...</span>

@@ -2,6 +2,7 @@ import datetime
 import random
 from sqlalchemy.orm import Session
 import models
+from auth_utils import hash_password
 
 def seed_sample_data(db: Session, force: bool = False):
     if force:
@@ -765,7 +766,63 @@ def seed_sample_data(db: Session, force: bool = False):
     db.commit()
 
 
+def seed_users_if_missing(db: Session):
+    """Ensures the 3 official demo accounts exist with secure PBKDF2 hashed passwords."""
+    demo_users = [
+        {
+            "email": "institution@demo.aicte.local",
+            "password": "Institution@2026",
+            "name": "Prof. Alok Kumar Singhal",
+            "role": "INSTITUTION",
+            "institution_id": 1,
+            "designation": "Director General & Principal"
+        },
+        {
+            "email": "officer@demo.aicte.local",
+            "password": "Officer@2026",
+            "name": "Shri R. K. Sharma",
+            "role": "AICTE_OFFICER",
+            "institution_id": None,
+            "designation": "Deputy Director - Scrutiny & Verification Cell"
+        },
+        {
+            "email": "approver@demo.aicte.local",
+            "password": "Approver@2026",
+            "name": "Dr. M. S. Verma",
+            "role": "APPROVER",
+            "institution_id": None,
+            "designation": "Financial Adviser & Competent Authority"
+        }
+    ]
+
+    for u in demo_users:
+        existing = db.query(models.User).filter(models.User.email == u["email"]).first()
+        if not existing:
+            new_user = models.User(
+                email=u["email"],
+                password_hash=hash_password(u["password"]),
+                name=u["name"],
+                role=u["role"],
+                institution_id=u["institution_id"],
+                designation=u["designation"],
+                is_active=True,
+                created_at=datetime.datetime.utcnow()
+            )
+            db.add(new_user)
+        else:
+            # Ensure password hash is up to date
+            existing.password_hash = hash_password(u["password"])
+            existing.role = u["role"]
+            existing.institution_id = u["institution_id"]
+            existing.name = u["name"]
+            existing.designation = u["designation"]
+
+    db.commit()
+
+
 def seed_database_if_empty(db: Session):
     count = db.query(models.Institution).count()
     if count == 0:
         seed_sample_data(db, force=False)
+    # Always ensure demo users exist
+    seed_users_if_missing(db)

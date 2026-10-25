@@ -1,6 +1,6 @@
 import datetime
 import random
-from fastapi import APIRouter, Depends, HTTPException, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, Query, Body, Header
 from sqlalchemy.orm import Session
 from typing import Optional, List
 
@@ -105,6 +105,7 @@ def trigger_simulated_bank_verification(
     fdr_id: int,
     simulate_scenario: Optional[str] = Query("EXACT_MATCH", description="EXACT_MATCH, AMOUNT_MISMATCH, DATE_MISMATCH, LIEN_MISSING"),
     actor_name: str = Query("AICTE Verification Cell"),
+    x_user_role: Optional[str] = Header(None, alias="X-User-Role"),
     db: Session = Depends(get_db)
 ):
     """
@@ -112,6 +113,9 @@ def trigger_simulated_bank_verification(
     Clearly labeled as simulated bank verification.
     Detects discrepancies and updates FDR status accordingly.
     """
+    if x_user_role and x_user_role not in ["AICTE_OFFICER"]:
+        raise HTTPException(status_code=403, detail=f"Access Denied: Role '{x_user_role}' is not authorized to trigger bank verifications. Required: AICTE_OFFICER.")
+
     fdr = db.query(models.FDR).filter(models.FDR.id == fdr_id).first()
     if not fdr:
         raise HTTPException(status_code=404, detail="FDR record not found")
@@ -314,8 +318,12 @@ def trigger_simulated_bank_verification(
 def resolve_discrepancy(
     discrepancy_id: int,
     payload: schemas.DiscrepancyResolve,
+    x_user_role: Optional[str] = Header(None, alias="X-User-Role"),
     db: Session = Depends(get_db)
 ):
+    if x_user_role and x_user_role not in ["AICTE_OFFICER"]:
+        raise HTTPException(status_code=403, detail=f"Access Denied: Role '{x_user_role}' is not authorized to resolve discrepancies. Required: AICTE_OFFICER.")
+
     disc = db.query(models.Discrepancy).filter(models.Discrepancy.id == discrepancy_id).first()
     if not disc:
         raise HTTPException(status_code=404, detail="Discrepancy record not found")
@@ -364,8 +372,12 @@ def officer_approve_verification(
     fdr_id: int,
     officer_name: str = Body(..., embed=True),
     verification_notes: Optional[str] = Body(None, embed=True),
+    x_user_role: Optional[str] = Header(None, alias="X-User-Role"),
     db: Session = Depends(get_db)
 ):
+    if x_user_role and x_user_role not in ["AICTE_OFFICER"]:
+        raise HTTPException(status_code=403, detail=f"Access Denied: Role '{x_user_role}' is not authorized to approve verification. Required: AICTE_OFFICER.")
+
     fdr = db.query(models.FDR).filter(models.FDR.id == fdr_id).first()
     if not fdr:
         raise HTTPException(status_code=404, detail="FDR record not found")
@@ -400,3 +412,44 @@ def officer_approve_verification(
     )
 
     return {"success": True, "message": f"FDR {fdr.fdr_number} approved as ACTIVE by {officer_name}"}
+
+
+@router.post("/request-correction/{fdr_id}")
+def request_institution_correction(
+    fdr_id: int,
+    payload: schemas.CorrectionRequest,
+    x_user_role: Optional[str] = Header(None, alias="X-User-Role"),
+    db: Session = Depends(get_db)
+):
+    """Stage for Officer to send a formal correction request back to technical institution"""
+    if x_user_role and x_user_role not in ["AICTE_OFFICER"]:
+        raise HTTPException(status_code=403, detail=f"Access Denied: Role '{x_user_role}' is not authorized to request corrections. Required: AICTE_OFFICER.")
+
+    fdr = db.query(models.FDR).filter(models.FDR.id == fdr_id).first()
+    if not fdr:
+        raise HTTPException(status_code=404, detail="FDR record not found")
+
+    if not payload.correction_note or not payload.correction_note.strip():
+        raise HTTPException(status_code=400, detail="Correction instructions are mandatory.")
+
+    fdr.status = "CORRECTION_REQUESTED"
+    fdr.verification_notes = payload.correction_note
+    fdr.updated_at = datetime.datetime.utcnow()
+    db.commit()
+
+    log_audit(
+        db=db,
+        entity_type="FDR",
+        entity_id=fdr.id,
+        fdr_number=fdr.fdr_number,
+        action="INSTITUTION_CORRECTION_REQUESTED",
+        actor_role="AICTE_OFFICER",
+        actor_name=payload.officer_name,
+        details=f"Officer requested institution correction on FDR {fdr.fdr_number}. Note: {payload.correction_note}"
+    )
+
+    return {
+        "success": True, 
+        "status": "CORRECTION_REQUESTED", 
+        "message": f"Correction request dispatched to {fdr.institution_name}."
+    }

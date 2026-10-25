@@ -5,8 +5,8 @@ from fastapi.staticfiles import StaticFiles
 
 from database import engine, Base, SessionLocal
 import models
-from routers import fdrs, verification, renewals, releases, audit, analytics, institutions
-from seed_data import seed_database_if_empty, seed_sample_data
+from routers import auth, fdrs, verification, renewals, releases, audit, analytics, institutions
+from seed_data import seed_database_if_empty, seed_sample_data, seed_users_if_missing
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -32,6 +32,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 # Include Routers
+app.include_router(auth.router)
 app.include_router(fdrs.router)
 app.include_router(verification.router)
 app.include_router(renewals.router)

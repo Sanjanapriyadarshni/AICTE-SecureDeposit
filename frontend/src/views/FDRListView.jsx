@@ -26,8 +26,15 @@ export default function FDRListView({
   onInitiateRenewal,
   onInitiateRelease 
 }) {
-  const [fdrs, setFdrs] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [fdrs, setFdrs] = useState(() => {
+    try {
+      const cached = localStorage.getItem('aicte_fdrs');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedBank, setSelectedBank] = useState('ALL');
@@ -229,7 +236,7 @@ export default function FDRListView({
 
       {/* Table Section */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-        {loading ? (
+        {loading && fdrs.length === 0 ? (
           <div className="p-12 text-center text-slate-500">
             <RotateCw className="w-8 h-8 animate-spin mx-auto text-blue-600 mb-2" />
             <span>Fetching security deposit records...</span>

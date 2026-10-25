@@ -24,6 +24,23 @@ class Institution(Base):
     fdrs = relationship("FDR", back_populates="institution", cascade="all, delete-orphan")
     release_requests = relationship("ReleaseRequest", back_populates="institution")
     renewals = relationship("RenewalRequest", back_populates="institution")
+    users = relationship("User", back_populates="institution")
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(150), unique=True, index=True, nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    name = Column(String(150), nullable=False)
+    role = Column(String(50), nullable=False, index=True) # INSTITUTION, AICTE_OFFICER, APPROVER
+    institution_id = Column(Integer, ForeignKey("institutions.id"), nullable=True, index=True)
+    designation = Column(String(100), nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    institution = relationship("Institution", back_populates="users", foreign_keys=[institution_id])
 
 
 class FDR(Base):

@@ -1,11 +1,12 @@
 import datetime
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from sqlalchemy.orm import Session
 from typing import Optional, List
 
 from database import get_db
 import models, schemas
+from auth_utils import get_current_user
 
 router = APIRouter(prefix="/api/releases", tags=["Release & Refund Workflow"])
 
@@ -28,13 +29,17 @@ def log_audit(db: Session, entity_type: str, entity_id: int, fdr_number: str, ac
 def get_release_requests(
     status: Optional[str] = Query(None, description="Filter by status"),
     institution_id: Optional[int] = Query(None, description="Filter by institution"),
+    current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     query = db.query(models.ReleaseRequest)
+    if current_user.role == "INSTITUTION" and current_user.institution_id:
+        query = query.filter(models.ReleaseRequest.institution_id == current_user.institution_id)
+    elif institution_id:
+        query = query.filter(models.ReleaseRequest.institution_id == institution_id)
+
     if status and status != "ALL":
         query = query.filter(models.ReleaseRequest.status == status)
-    if institution_id:
-        query = query.filter(models.ReleaseRequest.institution_id == institution_id)
     return query.order_by(models.ReleaseRequest.created_at.desc()).all()
 
 
@@ -101,29 +106,41 @@ def create_release_request(payload: schemas.ReleaseRequestCreate, db: Session = 
 def officer_review_release(
     request_id: int,
     payload: schemas.ReleaseOfficerReview,
+    current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Stage 1: AICTE Verification Officer scrutinizes documents and submits formal recommendation"""
+    # Enforce backend authorization: only AICTE Officer can perform scrutiny
+    if current_user.role not in ["AICTE_OFFICER", "ADMIN"]:
+        raise HTTPException(
+            status_code=403, 
+            detail=f"Access Denied: Role '{current_user.role}' is not authorized to perform scrutiny review. Required: AICTE_OFFICER."
+        )
+
     release = db.query(models.ReleaseRequest).filter(models.ReleaseRequest.id == request_id).first()
     if not release:
         raise HTTPException(status_code=404, detail="Release request not found")
 
+    if not payload.comments or not payload.comments.strip():
+        raise HTTPException(status_code=400, detail="Scrutiny comments / justification note is mandatory.")
+
     fdr = db.query(models.FDR).filter(models.FDR.id == release.fdr_id).first()
 
+    officer_name = payload.officer_name or current_user.name
     release.officer_comments = payload.comments
-    release.officer_name = payload.officer_name
+    release.officer_name = officer_name
     release.officer_reviewed_at = datetime.datetime.utcnow()
 
     if payload.action == "RECOMMEND":
         release.status = "RECOMMENDED_FOR_APPROVAL"
         action_name = "RELEASE_OFFICER_RECOMMENDED"
-        msg = f"Application recommended for approval to Financial Approver by Officer {payload.officer_name}."
+        msg = f"Application recommended for approval to Financial Approver by Officer {officer_name}."
     else:
         release.status = "OFFICER_REJECTED"
         if fdr:
             fdr.status = "ACTIVE"
         action_name = "RELEASE_OFFICER_REJECTED"
-        msg = f"Application rejected by Verification Officer {payload.officer_name}."
+        msg = f"Application rejected by Verification Officer {officer_name}."
 
     db.commit()
 
@@ -134,7 +151,7 @@ def officer_review_release(
         fdr_number=release.fdr_number,
         action=action_name,
         actor_role="AICTE_OFFICER",
-        actor_name=payload.officer_name,
+        actor_name=officer_name,
         details=f"{msg} Comments: {payload.comments}"
     )
 
@@ -145,20 +162,55 @@ def officer_review_release(
 def approver_action_release(
     request_id: int,
     payload: schemas.ReleaseApproverAction,
+    current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Stage 2: Competent Authority / Financial Approver gives final authorization or rejection"""
+    """Stage 2: Competent Authority / Financial Approver gives final authorization, rejection, or return for clarification"""
+    # Enforce backend authorization: only Approver can sanction or decide releases
+    if current_user.role not in ["APPROVER", "FINANCIAL_APPROVER", "ADMIN"]:
+        raise HTTPException(
+            status_code=403, 
+            detail=f"Access Denied: Role '{current_user.role}' is not authorized to sanction release requests. Required: APPROVER."
+        )
+
     release = db.query(models.ReleaseRequest).filter(models.ReleaseRequest.id == request_id).first()
     if not release:
         raise HTTPException(status_code=404, detail="Release request not found")
 
+    if not payload.comments or not payload.comments.strip():
+        raise HTTPException(status_code=400, detail="Decision reason / remarks are mandatory.")
+
     fdr = db.query(models.FDR).filter(models.FDR.id == release.fdr_id).first()
 
+    approver_name = payload.approver_name or current_user.name
     release.approver_comments = payload.comments
-    release.approver_name = payload.approver_name
+    release.approver_name = approver_name
     release.approver_action_at = datetime.datetime.utcnow()
 
     if payload.action == "APPROVE":
+        # Mandatory Approval Rules:
+        # 1. Must be recommended by Scrutiny Officer
+        if release.status != "RECOMMENDED_FOR_APPROVAL":
+            raise HTTPException(
+                status_code=400, 
+                detail="Approval Denied: Mandatory Scrutiny Clearance by AICTE Verification Officer is incomplete. Request status must be 'RECOMMENDED_FOR_APPROVAL'."
+            )
+        # 2. Must not have active unresolved vigilance discrepancies
+        if fdr and fdr.status == "DISCREPANCY_FLAGGED":
+            raise HTTPException(
+                status_code=400,
+                detail="Approval Denied: Security Deposit FDR has active unresolved vigilance discrepancies. Resolution required before sanction."
+            )
+        unresolved_discs = db.query(models.Discrepancy).filter(
+            models.Discrepancy.fdr_id == release.fdr_id, 
+            models.Discrepancy.resolved == False
+        ).count()
+        if unresolved_discs > 0:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Approval Denied: FDR #{release.fdr_number} has {unresolved_discs} active vigilance discrepancies. Resolution required before sanction."
+            )
+
         # Generate cryptographically verifiable simulated signature token
         sig_token = f"DIGI-SIGN-AICTE-{uuid.uuid4().hex[:12].upper()}"
         release.approver_signature_token = sig_token
@@ -167,14 +219,21 @@ def approver_action_release(
             fdr.status = "RELEASED"
             fdr.updated_at = datetime.datetime.utcnow()
         action_name = "RELEASE_SANCTIONED_BY_APPROVER"
-        msg = f"Final release approved by {payload.approver_name}. Security deposit released and refund queued."
-    else:
+        msg = f"Final release sanctioned by {payload.approver_name}. Security deposit released and refund queued (Simulated PFMS treasury disbursement)."
+    elif payload.action in ["RETURN", "RETURN_FOR_CLARIFICATION"]:
+        release.status = "RETURNED_FOR_CLARIFICATION"
+        if fdr:
+            fdr.status = "ACTIVE"
+            fdr.updated_at = datetime.datetime.utcnow()
+        action_name = "RELEASE_RETURNED_FOR_CLARIFICATION"
+        msg = f"Release request returned for clarification by {payload.approver_name}. Clarification needed: {payload.comments}"
+    else: # REJECT
         release.status = "APPROVER_REJECTED"
         if fdr:
             fdr.status = "ACTIVE"
             fdr.updated_at = datetime.datetime.utcnow()
         action_name = "RELEASE_REJECTED_BY_APPROVER"
-        msg = f"Final release rejected by {payload.approver_name}."
+        msg = f"Final release rejected by {payload.approver_name}. Reason: {payload.comments}"
 
     db.commit()
 

@@ -24,7 +24,7 @@ class InstitutionResponse(InstitutionBase):
 
 class FDRBase(BaseModel):
     institution_id: int
-    institution_name: str
+    institution_name: Optional[str] = None
     fdr_number: str
     bank_name: str
     branch_name: str
@@ -152,9 +152,18 @@ class ReleaseOfficerReview(BaseModel):
     officer_name: str = "Shri R. K. Sharma (Deputy Director, AICTE)"
 
 class ReleaseApproverAction(BaseModel):
-    action: str # "APPROVE" or "REJECT"
+    action: str # "APPROVE", "REJECT", or "RETURN_FOR_CLARIFICATION"
     comments: str
     approver_name: str = "Dr. M. S. Verma (Financial Adviser & Approver, AICTE)"
+
+class CorrectionRequest(BaseModel):
+    officer_name: str = "Shri R. K. Sharma (Deputy Director, AICTE)"
+    correction_note: str
+
+class CorrectionResubmit(BaseModel):
+    document_url: Optional[str] = None
+    document_filename: Optional[str] = None
+    institution_remarks: Optional[str] = "Corrected documents attached"
 
 class ReleaseResponse(BaseModel):
     id: int

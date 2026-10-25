@@ -1,12 +1,13 @@
 import os
 import shutil
 import datetime
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Header
 from sqlalchemy.orm import Session
 from typing import Optional, List
 
 from database import get_db
 import models, schemas
+from auth_utils import get_current_user
 
 router = APIRouter(prefix="/api/fdrs", tags=["FDRs"])
 
@@ -33,16 +34,21 @@ def get_fdrs(
     bank: Optional[str] = Query(None, description="Filter by bank"),
     institution_id: Optional[int] = Query(None, description="Filter by institution"),
     search: Optional[str] = Query(None, description="Search by FDR number or institution"),
+    current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     query = db.query(models.FDR)
+
+    # Scoping: Institution users can ONLY see their own FDRs
+    if current_user.role == "INSTITUTION" and current_user.institution_id:
+        query = query.filter(models.FDR.institution_id == current_user.institution_id)
+    elif institution_id:
+        query = query.filter(models.FDR.institution_id == institution_id)
 
     if status and status != "ALL":
         query = query.filter(models.FDR.status == status)
     if bank and bank != "ALL":
         query = query.filter(models.FDR.bank_name == bank)
-    if institution_id:
-        query = query.filter(models.FDR.institution_id == institution_id)
     if search:
         search_pattern = f"%{search}%"
         query = query.filter(
@@ -63,7 +69,15 @@ def get_fdr_detail(fdr_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=schemas.FDRResponse)
-def create_fdr(fdr_in: schemas.FDRCreate, db: Session = Depends(get_db)):
+def create_fdr(
+    fdr_in: schemas.FDRCreate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Enforce institution ownership if logged in as institution
+    if current_user.role == "INSTITUTION" and current_user.institution_id:
+        fdr_in.institution_id = current_user.institution_id
+
     # Check if institution exists
     inst = db.query(models.Institution).filter(models.Institution.id == fdr_in.institution_id).first()
     if not inst:
@@ -83,7 +97,7 @@ def create_fdr(fdr_in: schemas.FDRCreate, db: Session = Depends(get_db)):
 
     new_fdr = models.FDR(
         institution_id=fdr_in.institution_id,
-        institution_name=inst.name,
+        institution_name=fdr_in.institution_name or inst.name,
         fdr_number=fdr_in.fdr_number.strip().upper(),
         bank_name=fdr_in.bank_name,
         branch_name=fdr_in.branch_name,
@@ -199,3 +213,49 @@ def update_fdr_status(
     )
 
     return fdr
+
+
+@router.post("/{fdr_id}/resubmit-correction")
+def resubmit_fdr_correction(
+    fdr_id: int,
+    payload: schemas.CorrectionResubmit,
+    x_user_role: Optional[str] = Header(None, alias="X-User-Role"),
+    db: Session = Depends(get_db)
+):
+    """Allows an Institution to upload corrected/clarified documents and return FDR to verification queue"""
+    if x_user_role and x_user_role not in ["INSTITUTION"]:
+        raise HTTPException(
+            status_code=403, 
+            detail=f"Access Denied: Role '{x_user_role}' cannot submit institution corrections. Required: INSTITUTION."
+        )
+
+    fdr = db.query(models.FDR).filter(models.FDR.id == fdr_id).first()
+    if not fdr:
+        raise HTTPException(status_code=404, detail="FDR record not found")
+
+    if payload.document_url:
+        fdr.document_url = payload.document_url
+    if payload.document_filename:
+        fdr.document_filename = payload.document_filename
+
+    fdr.status = "PENDING_VERIFICATION"
+    fdr.verification_notes = f"Correction re-submitted by institution: {payload.institution_remarks or 'Documents updated'}"
+    fdr.updated_at = datetime.datetime.utcnow()
+    db.commit()
+
+    log_audit(
+        db=db,
+        entity_type="FDR",
+        entity_id=fdr.id,
+        fdr_number=fdr.fdr_number,
+        action="FDR_CORRECTION_RESUBMITTED",
+        actor_role="INSTITUTION",
+        actor_name=fdr.institution_name,
+        details=f"Institution re-submitted corrected documents for FDR {fdr.fdr_number}. Remarks: {payload.institution_remarks or 'N/A'}"
+    )
+
+    return {
+        "success": True, 
+        "status": "PENDING_VERIFICATION", 
+        "message": f"Correction re-submitted successfully. FDR #{fdr.fdr_number} queued for officer verification."
+    }

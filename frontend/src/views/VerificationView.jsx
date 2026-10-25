@@ -21,6 +21,7 @@ import {
 import { 
   fetchFDRs, 
   fetchVerificationComparison, 
+  getInitialVerificationComparison,
   triggerBankVerification, 
   resolveDiscrepancy, 
   officerApproveVerification 
@@ -31,12 +32,41 @@ export default function VerificationView({
   currentRole, 
   selectedFdrId, 
   setSelectedFdrId,
-  onVerificationComplete 
+  onVerificationComplete,
+  filterMode = 'ALL'
 }) {
-  const [fdrList, setFdrList] = useState([]);
-  const [activeFdrId, setActiveFdrId] = useState(selectedFdrId || null);
-  const [comparisonData, setComparisonData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [fdrList, setFdrList] = useState(() => {
+    try {
+      const cached = localStorage.getItem('aicte_fdrs');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [activeFdrId, setActiveFdrId] = useState(() => {
+    if (selectedFdrId) return selectedFdrId;
+    try {
+      const cached = localStorage.getItem('aicte_fdrs');
+      const list = cached ? JSON.parse(cached) : [];
+      if (filterMode === 'DISCREPANCIES') {
+        return list.find(f => f.status === 'DISCREPANCY_FLAGGED')?.id || list[0]?.id || 7;
+      }
+      if (filterMode === 'CORRECTIONS') {
+        return list.find(f => f.status === 'CORRECTION_REQUESTED')?.id || list[0]?.id || 7;
+      }
+      return list.find(f => f.status === 'PENDING_VERIFICATION' || f.status === 'DISCREPANCY_FLAGGED')?.id || list[0]?.id || 7;
+    } catch {
+      return 7;
+    }
+  });
+  const [comparisonData, setComparisonData] = useState(() => {
+    try {
+      return getInitialVerificationComparison(selectedFdrId || 7);
+    } catch {
+      return null;
+    }
+  });
+  const [loading, setLoading] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [simulationScenario, setSimulationScenario] = useState('EXACT_MATCH');
   
@@ -52,7 +82,7 @@ export default function VerificationView({
 
   useEffect(() => {
     loadFDRList();
-  }, []);
+  }, [filterMode]);
 
   useEffect(() => {
     if (activeFdrId) {
@@ -65,7 +95,17 @@ export default function VerificationView({
       const data = await fetchFDRs();
       setFdrList(data);
       if (data.length > 0) {
-        const initial = selectedFdrId || data.find(f => f.status === 'PENDING_VERIFICATION')?.id || data[0].id;
+        let initial = selectedFdrId;
+        if (!initial) {
+          if (filterMode === 'DISCREPANCIES') {
+            initial = data.find(f => f.status === 'DISCREPANCY_FLAGGED')?.id;
+          } else if (filterMode === 'CORRECTIONS') {
+            initial = data.find(f => f.status === 'CORRECTION_REQUESTED')?.id;
+          }
+          if (!initial) {
+            initial = data.find(f => f.status === 'PENDING_VERIFICATION' || f.status === 'DISCREPANCY_FLAGGED')?.id || data[0].id;
+          }
+        }
         setActiveFdrId(initial);
       }
     } catch (err) {
@@ -74,7 +114,7 @@ export default function VerificationView({
   }
 
   async function loadComparison(fdrId) {
-    setLoading(true);
+    if (!comparisonData) setLoading(true);
     try {
       const data = await fetchVerificationComparison(fdrId);
       setComparisonData(data);
@@ -159,8 +199,8 @@ export default function VerificationView({
     }).format(val || 0);
   };
 
-  const instData = comparisonData?.institution_data;
-  const bankData = comparisonData?.bank_confirmed_data;
+  const instData = comparisonData?.institution_data || {};
+  const bankData = comparisonData?.bank_confirmed_data || {};
   const discrepancies = comparisonData?.discrepancies || [];
   const unresolvedDiscrepancies = discrepancies.filter(d => !d.resolved);
   const hasCriticalUnresolved = unresolvedDiscrepancies.some(d => d.severity === 'CRITICAL' || d.severity === 'HIGH');
@@ -305,7 +345,7 @@ export default function VerificationView({
         </div>
       </div>
 
-      {loading ? (
+      {loading && !comparisonData ? (
         <div className="p-12 text-center text-slate-500 bg-white rounded-xl border border-slate-200">
           <RotateCw className="w-8 h-8 animate-spin mx-auto text-blue-600 mb-2" />
           <span>Loading verification records...</span>
@@ -675,7 +715,7 @@ export default function VerificationView({
                   Statutory Rule: OCR Does Not Prove Authenticity
                 </span>
                 <p className="text-[11px] leading-relaxed text-slate-600">
-                  {comparisonData.ocr_info.disclaimer}
+                  {comparisonData?.ocr_info?.disclaimer || "CRITICAL AICTE NOTICE: OCR text extraction is an assistive scanning tool for data population and preliminary visual checks. In strict accordance with AICTE vigilance standards, OCR does NOT prove legal or financial authenticity. Authenticity is exclusively verified against Core Banking System / SFMS records."}
                 </p>
               </div>
             </div>

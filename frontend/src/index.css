@@ -1,16 +1,17 @@
 @import "tailwindcss";
 
 @theme {
-  --color-aicte-navy: #0b1f3a;
-  --color-aicte-dark: #08172c;
-  --color-aicte-blue: #1e3a8a;
-  --color-aicte-sky: #0284c7;
-  --color-aicte-gold: #f59e0b;
+  --color-aicte-navy: #17365D;
+  --color-aicte-dark: #0f243e;
+  --color-aicte-blue: #1d4ed8;
+  --color-aicte-muted: #3D7199;
+  --color-aicte-bg: #F3F6FA;
+  --color-aicte-gold: #d97706;
 }
 
 /* Base Body and Root Styling */
 body {
-  background-color: #f8fafc;
+  background-color: #F3F6FA;
   color: #0f172a;
   min-height: 100vh;
   margin: 0;
@@ -28,22 +29,22 @@ body {
 
 /* Guaranteed High-Contrast Government Theme Utility Classes */
 .bg-aicte-navy {
-  background-color: #0b1f3a !important;
+  background-color: #17365D !important;
   color: #ffffff !important;
 }
 
 .bg-aicte-dark {
-  background-color: #08172c !important;
+  background-color: #0f243e !important;
   color: #cbd5e1 !important;
 }
 
 .bg-aicte-banner {
-  background: linear-gradient(135deg, #0b1f3a 0%, #12315b 50%, #0f2942 100%) !important;
+  background: linear-gradient(135deg, #17365D 0%, #1e4577 50%, #17365D 100%) !important;
   color: #ffffff !important;
 }
 
 .bg-aicte-bank-gateway {
-  background: linear-gradient(135deg, #0f2942 0%, #1e3a8a 100%) !important;
+  background: linear-gradient(135deg, #17365D 0%, #204b7d 100%) !important;
   color: #ffffff !important;
 }
 
